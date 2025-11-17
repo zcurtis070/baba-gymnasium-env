@@ -14,12 +14,9 @@ git submodule update --init --recursive
 2. Build the Baba engine (pyBaba)
 ```bash
 cd babelib
-mkdir build
-cd build
-cmake ..
-make -j
+python3 setup.py build
+python3 setup.py install --user
 ```
-
 
 This produces:
 
