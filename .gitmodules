@@ -1,0 +1,3 @@
+[submodule "babelib"]
+	path = babelib
+	url = https://github.com/utilForever/baba-is-auto
