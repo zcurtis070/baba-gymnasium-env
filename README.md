@@ -1,28 +1,33 @@
 🚀 Installation
 1. Clone the repository (with submodules)
+```bash
 git clone --recurse-submodules https://github.com/YOUR_USERNAME/baba-gymnasium-env.git
 cd baba-gymnasium-env
-
+```
 
 If you forgot --recurse-submodules:
 
+```bash
 git submodule update --init --recursive
+```
 
-⚙️ Build the Baba engine (pyBaba)
+2. Build the Baba engine (pyBaba)
+```bash
 cd babelib
 mkdir build
 cd build
 cmake ..
 make -j
+```
 
 
 This produces:
 
 babelib/build/pyBaba.so
 
-📦 Install the Gymnasium environment
+3. Install the Gymnasium environment
 
 From the repo root:
-
-cd my_baba_env
-pip install -e .
+```bash
+pip install -e my_baba_env
+```
