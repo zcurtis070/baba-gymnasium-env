@@ -3,7 +3,7 @@ import my_baba_env
 import pygame
 import time
 
-env = gym.make("BabaIsYou-v1", render_mode="human",world_path="/home/zcurtis070/baba-is-auto/Resources/Maps/volcano.txt")
+env = gym.make("BabaIsYou-v1", render_mode="human",world_path="/home/zcurtis070/baba-gymnasium-env/babelib/Resources/Maps/volcano.txt")
 obs, info = env.reset()
 
 print("Window open. Close the window or press CTRL+C to exit.")
