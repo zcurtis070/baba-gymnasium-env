@@ -1,15 +1,18 @@
+
+# Script to run ppo_solver_v0-1
+
 import gymnasium as gym
 import my_baba_env
 import pygame
 import time
 
-path_z = "/home/zcurtis070/baba-gymnasium-env" \
-         "/babelib/Resources/Maps/volcano.txt"
+import ppo_solver_v0_1
 
-path_m = "/Users/maxmoody/Documents/GitHub/baba-gymnasium-env/"\
+local_path = "/Users/maxmoody/Documents/GitHub/baba-gymnasium-env/"\
              "babelib/Resources/Maps/volcano.txt"
 
-env = gym.make("BabaIsYou-v1", render_mode="human",world_path=path_z)
+env = gym.make("BabaIsYou-v1", world_path=local_path)
+eval_env = gym.make("BabaIsYou-v1", render_mode="human", world_path=local_path)
 obs, info = env.reset()
 
 print("Window open. Close the window or press CTRL+C to exit.")
@@ -21,6 +24,12 @@ while running:
         if event.type == pygame.QUIT:
             running = False
 
+    episodes = 1000
+    solver = ppo_solver.PPO(env, eval_env)
+
+    for i_episode in range(episodes):
+        solver.train_episode()
+
     # Take a random action so we can see the game update
     action = env.action_space.sample()
     obs, reward, terminated, truncated, info = env.step(action)
@@ -29,6 +38,6 @@ while running:
         obs, info = env.reset()
 
     # Slow down display so the window stays visible
-    time.sleep(0.2)
+    # time.sleep(0.2)
 
 env.close()

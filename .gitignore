@@ -3,3 +3,11 @@ __pycache__/
 build/
 *.pyc
 */CMakeFiles/
+.DS_Store
+.idea/baba-gymnasium-env.iml
+.idea/encodings.xml
+.idea/inspectionProfiles/profiles_settings.xml
+.idea/inspectionProfiles/Project_Default.xml
+.idea/misc.xml
+.idea/modules.xml
+.idea/vcs.xml
