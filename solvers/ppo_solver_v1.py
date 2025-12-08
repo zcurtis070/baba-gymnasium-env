@@ -1,6 +1,4 @@
 
-# Code modified from assignments; failed because not using convolutional neural network for actor-critic.
-
 from abc import ABC, abstractmethod
 from enum import Enum
 import gymnasium as gym
@@ -21,49 +19,80 @@ class ActorCriticNetwork(nn.Module):
     def __init__(self, obs_sample, act_dim, hidden_sizes):
         super().__init__()
 
-        obs_dim = int(np.prod(obs_sample.shape))
-        sizes = [obs_dim] + hidden_sizes
+        # --- Determine shape of observation ---
+        self.obs_shape = obs_sample.shape
+        C, H, W = self.obs_shape
 
-        self.layers = nn.ModuleList()
+        # --- Minimal CNN feature extractor ---
+        self.conv = nn.Sequential(
+            nn.Conv2d(C, 32, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(2),   # halves H,W
+        )
 
-        # Shared layers
-        for i in range(len(sizes) - 1):
-            self.layers.append(nn.Linear(sizes[i], sizes[i + 1]))
+        # --- Compute size after convs ---
+        with torch.no_grad():
+            dummy = torch.zeros(1, C, H, W)
+            conv_out = self.conv(dummy)
+            conv_flat_dim = int(np.prod(conv_out.shape[1:]))
 
-        # Actor head layers
-        self.layers.append(nn.Linear(hidden_sizes[-1], act_dim))
-        # Critic head layers
-        self.layers.append(nn.Linear(hidden_sizes[-1], 1))
+        # --- Shared MLP after CNN ---
+        mlp_layers = []
+        prev = conv_flat_dim
+        for hs in hidden_sizes:
+            mlp_layers.append(nn.Linear(prev, hs))
+            prev = hs
+        self.mlp = nn.Sequential(*mlp_layers)
+
+        # --- Actor head ---
+        self.actor_head = nn.Linear(hidden_sizes[-1], act_dim)
+
+        # --- Critic head ---
+        self.critic_head = nn.Linear(hidden_sizes[-1], 1)
 
     def forward(self, obs):
-        if obs.ndim == len(obs.shape):
+        # ---- 1. Ensure batch dimension ----
+        if obs.ndim == 3:
             obs = obs.unsqueeze(0)
 
-        x = torch.flatten(obs, start_dim=1)
+        # ---- 2. Convert from HWC → CHW (image → PyTorch format) ----
+        # If the environment outputs (H, W, C), fix it here:
+        if obs.shape[-1] <= 4 and self.obs_shape[0] <= 4:
+            # This checks if the image's channel dimension is last
+            # Usually Baba-Is-Auto images are HWC when coming from Gym
+            obs = obs.permute(0, 3, 1, 2)
 
-        for i in range(len(self.layers) - 2):
-            x = F.relu(self.layers[i](x))
+        # ---- 3. Convolutional Feature Extractor ----
+        x = self.conv(obs)
 
-        # Actor head
-        probs = F.softmax(self.layers[-2](x), dim=-1)
-        # Critic head
-        value = self.layers[-1](x)
+        # ---- 4. Flatten Feature Map ----
+        x = torch.flatten(x, start_dim=1)
 
-        return torch.squeeze(probs, 0 if probs.shape[0] == 1 else -1), \
-            torch.squeeze(value, 0 if value.shape[0] == 1 else -1)
+        # ---- 5. Shared MLP ----
+        x = F.relu(self.mlp(x))
+
+        # ---- 6. Actor & Critic Heads ----
+        probs = F.softmax(self.actor_head(x), dim=-1)
+        value = self.critic_head(x)
+
+        return probs.squeeze(0), value.squeeze(0)
 
 
 class PPO(ABC):
-    def __init__(self, env, eval_env):
+    def __init__(self, env, eval_env, alpha=0.0003, gamma=0.9, epsilon=0.5, batch_size=64, lam=0.95, epochs=5):
         self.env = env
         self.eval_env = eval_env
         self.layers = [128, 128]
-        self.alpha = 1
-        self.gamma = 1
-        self.epsilon = 1
+        self.alpha = alpha      # learning rate
+        self.gamma = gamma      # reward decay
+        self.epsilon = epsilon  # clip size
+        self.lam = lam
         self.mem_size = 100
-        self.batch_size = 30
-        self.steps = 100
+        self.batch_size = batch_size
+        self.num_epochs = epochs
+        self.steps = 200
 
         # Create actor-critic network
         state, _ = env.reset()
@@ -75,6 +104,15 @@ class PPO(ABC):
 
         # Replay buffer
         self.replay_memory = deque(maxlen=self.mem_size)
+
+        # Store best return info
+        self.best_return = -float("inf")
+        self.best_path = None  # will store (states, actions, rewards)
+
+        self.best_block_return = -float("inf")
+        self.best_block_path = None
+
+        self.block_returns = []
 
     def step(self, action):
         """
@@ -160,9 +198,8 @@ class PPO(ABC):
     def compute_gae(self, rewards, dones, values_old):
         advantages = []
         gae = 0
-        next_value = 0
         gamma = self.gamma
-        lam = 0.5
+        lam = self.lam
 
         for t in reversed(range(len(rewards))):
             if t < len(values_old) - 1:
@@ -183,10 +220,12 @@ class PPO(ABC):
         if len(self.replay_memory) < self.batch_size:
             return
 
-        ppo_epochs = 30
+        ppo_epochs = self.num_epochs
+
+        # ppo_epochs = int(self.batch_size / 4) + 1
 
         # Extract transitions
-        batch = list(self.replay_memory)  # Do NOT random.sample: PPO is on-policy
+        batch = list(self.replay_memory)
         states, actions, log_probs_old, values_old, rewards, dones = zip(*batch)
 
         states = torch.stack(states)
@@ -213,12 +252,10 @@ class PPO(ABC):
             ratio = torch.exp(log_probs_new - log_probs_old)
 
             # Clipped surrogate
-            surr1 = ratio * advantages
-            surr2 = torch.clamp(ratio, 1 - self.epsilon, 1 + self.epsilon) * advantages
-            actor_loss = -torch.min(surr1, surr2).mean()
+            actor_loss = self.actor_loss(ratio, advantages)
 
             # Critic loss
-            critic_loss = F.mse_loss(values.squeeze(-1), returns)
+            critic_loss = self.critic_loss(values, returns)
 
             # Combine
             loss = actor_loss + 0.5 * critic_loss
@@ -230,33 +267,20 @@ class PPO(ABC):
         # Clear replay buffer (because PPO is on-policy)
         self.replay_memory.clear()
 
-    def update_actor_critic(self, advantage, prob, value):
-        """
-        Performs actor critic update.
-
-        args:
-            advantage: Advantage of the chosen action (tensor).
-            prob: Probability associated with the chosen action (tensor).
-            value: Critic's state value estimate (tensor).
-        """
-        # Compute loss
-        actor_loss = self.actor_loss(advantage.detach(), prob).mean()
-        critic_loss = self.critic_loss(advantage.detach(), value).mean()
-
-        loss = actor_loss + critic_loss
-
-        # Update actor critic
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
-
     def train_episode(self):
         """
         Run a single episode of the PPO algorithm.
         """
 
         state, _ = self.env.reset()
-        gamma = self.gamma
+
+        # ---- Added: path tracking ----
+        episode_states = []
+        episode_actions = []
+        episode_rewards = []
+
+        total_return = 0.0
+
         for _ in range(self.steps):
             # Choose action
             action, prob, value = self.select_action(state)
@@ -264,11 +288,9 @@ class PPO(ABC):
             # Take action
             next_state, reward, done, _ = self.step(action)
 
-            # next_state_tensor = torch.as_tensor(next_state, dtype=torch.float32)
-            # next_prob, next_value = self.actor_critic(next_state_tensor)
-
-            reward = torch.as_tensor(reward, dtype=torch.float32)
-            # advantage = reward + gamma * next_value.detach() * (1 - done) - value
+            episode_actions.append(action)
+            episode_rewards.append(reward)
+            total_return += reward
 
             # Store action taken
             self.memorize(state, action, reward, done)
@@ -278,44 +300,64 @@ class PPO(ABC):
             if done:
                 break
 
-        # Experience replay
+        # Save best path found so far
+        if total_return > self.best_return:
+            self.best_return = total_return
+            self.best_path = {
+                "states": episode_states,
+                "actions": episode_actions,
+                "rewards": episode_rewards,
+                "return": total_return,
+            }
+        # Save best path found in block
+        if total_return > self.best_block_return:
+            self.best_block_return = total_return
+            self.best_block_path = {
+                "states": episode_states,
+                "actions": episode_actions,
+                "rewards": episode_rewards,
+                "return": total_return,
+            }
+
+        self.block_returns.append(total_return)
+
+    def train_block(self):
+        # Store best return info
+        self.best_block_return = -float("inf")
+        self.best_block_path = None  # will store (states, actions, rewards)
+
+        self.block_returns = []
+
+        for i in range(self.batch_size):
+            self.train_episode()
         self.replay()
 
-    def actor_loss(self, advantage, prob):
+        # print(self.block_returns)
+
+    def actor_loss(self, ratio, advantages):
         """
         The policy gradient loss function.
 
         args:
+            ratio: ratio between old and new log_probs.
             advantage: Advantage of the chosen action.
-            prob: Probability associated with the chosen action.
 
         Returns:
             The unreduced loss (as a tensor).
         """
-        ################################
-        #   YOUR IMPLEMENTATION HERE   #
-        ################################
+        surr1 = ratio * advantages
+        surr2 = torch.clamp(ratio, 1 - self.epsilon, 1 + self.epsilon) * advantages
 
-        # Reused from REINFORCE
-        loss = -1.0 * torch.log(prob) * advantage
-        return loss
+        actor_loss = -torch.min(surr1, surr2).mean()
+        return actor_loss
 
-    def critic_loss(self, advantage, value):
+    def critic_loss(self, values, returns):
         """
         The integral of the critic gradient
-
-        args:
-            advantage: Advantage of the chosen action.
-            value: Critic's state value estimate.
-
-        Returns:
-            The unreduced loss (as a tensor).
         """
-        ################################
-        #   YOUR IMPLEMENTATION HERE   #
-        ################################
-        loss = -1.0 * advantage * value
-        return loss
+
+        critic_loss = F.mse_loss(values.squeeze(-1), returns)
+        return critic_loss
 
     def __str__(self):
         return "PPO"
@@ -323,3 +365,25 @@ class PPO(ABC):
     def plot(self, stats, smoothing_window=20, final=False):
         pass
         # plotting.plot_episode_stats(stats, smoothing_window, final=final)
+
+    def display_best_path(self, delay=0.1):
+        if self.best_path is None:
+            print("No best path recorded yet.")
+            return
+
+        print(f"Displaying best episode (return = {self.best_path['return']})")
+
+        env = self.eval_env  # use a separate env so training isn't disturbed
+        state, _ = env.reset()
+
+        for t, action in enumerate(self.best_path["actions"]):
+            env.render()  # show the frame
+            time.sleep(delay)
+
+            next_state, reward, term, trunc, _ = env.step(action)
+            done = term or trunc
+
+            if done:
+                env.render()
+                print("Episode finished.")
+                return

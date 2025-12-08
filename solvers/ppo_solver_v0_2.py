@@ -77,12 +77,12 @@ def ppo_update(policy, optimizer, states, actions, old_log_probs, returns, advan
 # --- Main Training Loop ---
 def train(max_episodes=1000):
     local_path_m = "/Users/maxmoody/Documents/GitHub/baba-gymnasium-env/" \
-                   "babelib/Resources/Maps/baba_is_you.txt"
+                   "babelib/Resources/Maps/med_box.txt"
 
     local_path_z = "/home/zcurtis070/baba-gymnasium-env" \
                    "/babelib/Resources/Maps/baba_is_you.txt"
 
-    env = gym.make("BabaIsYou-v1", world_path=local_path_z)
+    env = gym.make("BabaIsYou-v1", world_path=local_path_m)
 
     obs_shape = env.observation_space.shape
     n_actions = env.action_space.n
