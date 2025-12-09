@@ -1,50 +1,69 @@
 🚀 Installation
-1️⃣ Clone This Repository (with engine submodule)
+1. Clone the repository (with submodules)
+```bash
 git clone --recurse-submodules https://github.com/YOUR_USERNAME/baba-gymnasium-env.git
 cd baba-gymnasium-env
+```
 
 
 If you forgot --recurse-submodules:
 
+```bash
 git submodule update --init --recursive
+```
+
 
 
 Your directory structure should now look like:
 
+```bash
 baba-gymnasium-env/
-    baba_engine/        <-- full Baba-Is-Auto engine (submodule)
-    my_baba_env/        <-- your Gymnasium environment
+    babelib/            # <-- full Baba-Is-Auto engine (submodule)
+    my_baba_env/        # <-- the Gymnasium environment
     scripts/
+    solvers/            # <-- PPO algorithm code and scripts to run it
+    more_maps/          # <-- additional maps for demonstrating results
     README.md
+```
 
-2️⃣ Build & Install the Full Baba-Is-Auto Engine
+2. Build the Baba engine (pyBaba)
 
-The engine lives in:
-
-baba_engine/
-
-Build (Linux / macOS / WSL):
-cd baba_engine
-mkdir -p build
+```bash
+cd babelib
+mkdir build
 cd build
 cmake ..
-make -j$(nproc)
+make -j
+```
 
-Install Python bindings:
+This produces:
 
-From the root of the engine repo (baba_engine/):
+babelib/build/pyBaba.so
 
+3. Install the Gymnasium environment
+
+From the repo root:
+```bash
+pip install -e my_baba_env
+```
+
+
+If this does not work, install Python bindings:
+From the root of the engine repo (babelib/):
+
+```bash
 pip install -U .
+```
 
+This installs the correct pyBaba module.
 
-This installs the correct pyBaba module including:
+4. Run baba_simple_script.py
 
-Step() / Tick() turn processing
+Navigate to baba-gymnasium-env/solvers and run:
 
-HOT / MELT / DEFEAT
+```bash
+python3 baba_simple_script.py
+```
 
-Object interactions
+Follow the steps given in the terminal to run the PPO algorithm on one of six maps, with user chosen learning rate, reward discount, and clip bounds.
 
-Win / loss state resolution
-
-🔥 This step is what fixes lava not killing Baba.

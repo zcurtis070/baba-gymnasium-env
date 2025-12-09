@@ -31,7 +31,7 @@ class BabaIsYouEnv(gym.Env):
 
         # Renderer for human / rgb
         self.renderer = None
-        if render_mode == "human":
+        if render_mode in ("human", "rgb_array"):
             self.renderer = rendering.Renderer(self.game)
 
         # Action space (UP, DOWN, LEFT, RIGHT)
@@ -100,7 +100,7 @@ class BabaIsYouEnv(gym.Env):
         obs = self._get_obs()
         info = {}
 
-        if self.render_mode == "human":
+        if self.render_mode in ("human", "rgb_array"):
             self.render()
 
         return obs, info
@@ -136,7 +136,7 @@ class BabaIsYouEnv(gym.Env):
         obs = self._get_obs()
         info = {}
 
-        if self.render_mode == "human":
+        if self.render_mode in ("human", "rgb_array"):
             self.render()
 
         return obs, reward, terminated, truncated, info

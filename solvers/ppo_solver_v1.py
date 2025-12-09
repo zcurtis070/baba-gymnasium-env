@@ -387,3 +387,55 @@ class PPO(ABC):
                 env.render()
                 print("Episode finished.")
                 return
+
+    def display_path(self, path, delay=0.1):
+
+        print(f"Displaying episode with return = {path['return']}")
+
+        env = self.eval_env  # use a separate env so training isn't disturbed
+        state, _ = env.reset()
+
+        for t, action in enumerate(self.best_path["actions"]):
+            env.render()  # show the frame
+            time.sleep(delay)
+
+            next_state, reward, term, trunc, _ = env.step(action)
+            done = term or trunc
+
+            if done:
+                env.render()
+                print("Episode finished.")
+                return
+
+    def record_path(self, path, map_path):
+        ###
+        # temporary env, use rgb_array as render mode
+        tmp_env = gym.make("BabaIsYou-v1", world_path=map_path, render_mode="rgb_array")
+
+        # wrap the env in the record video
+        vid_env = gym.wrappers.RecordVideo(env=tmp_env, video_folder="../videos/",
+                                           name_prefix="test-video", episode_trigger=lambda x: x % 2 == 0)
+
+        # env reset for a fresh start
+        print(f"Displaying episode with return = {path['return']}")
+        state, _ = vid_env.reset()
+
+        # Start the recorder
+        vid_env.start_video_recorder()
+
+        for t, action in enumerate(path["actions"]):
+            vid_env.render()  # show the frame
+
+            next_state, reward, term, trunc, _ = vid_env.step(action)
+            done = term or trunc
+
+            if done:
+                vid_env.render()
+                print("Episode finished.")
+
+        # Don't forget to close the video recorder before the env
+        vid_env.close_video_recorder()
+
+        # Close the environment
+        vid_env.close()
+

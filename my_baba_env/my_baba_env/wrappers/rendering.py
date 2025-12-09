@@ -1,5 +1,6 @@
 import pygame
 import pyBaba
+import numpy as np
 from my_baba_env.wrappers import sprites
 
 
@@ -75,6 +76,20 @@ class Renderer:
                     pygame.display.flip()
 
             self.process_event()
+
+            # --- Added for video: return RGB array for video recording ---
+            if mode == "rgb_array":
+                # Get the screen surface
+                surface = pygame.display.get_surface()
+
+                # Convert pygame surface → numpy array
+                frame = pygame.surfarray.array3d(surface)
+                frame = np.transpose(frame, (1, 0, 2))  # convert (W,H,3) → (H,W,3)
+
+                return frame
+
+            # If mode is neither human nor rgb_array, return nothing
+            return None
 
         except Exception as e:
             self.game_over = True
